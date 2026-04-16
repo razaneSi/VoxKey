@@ -1,0 +1,126 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Courier+Prime:wght@400;700&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  font-family: 'Courier Prime', monospace;
+  background-color: #050811;
+  background-image: 
+    linear-gradient(90deg, rgba(0,255,200,0.08) 1px, transparent 1px),
+    linear-gradient(rgba(0,255,200,0.08) 1px, transparent 1px);
+  background-size: 40px 40px;
+  color: #e0e6ff;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+#root {
+  width: 100%;
+  height: 100dvh;
+  overflow: auto;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 255, 200, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 200, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 200, 0.5);
+  box-shadow: 0 0 8px rgba(0, 255, 200, 0.3);
+}
+
+/* Selection styling */
+::selection {
+  background: rgba(0, 255, 200, 0.3);
+  color: #e0e6ff;
+}
+
+::-moz-selection {
+  background: rgba(0, 255, 200, 0.3);
+  color: #e0e6ff;
+}
+
+/* Loading state */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100dvh;
+  background: #050811;
+  color: #00ffc8;
+  font-family: 'Space Mono', monospace;
+  font-size: 1.125rem;
+  letter-spacing: 0.125rem;
+}
+
+/* Focus states for accessibility */
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid #00ffc8;
+  outline-offset: 2px;
+}
+
+/* Prevent text selection on interactive elements */
+button,
+.btn-debarquer,
+.toggle-btn {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Smooth transitions */
+* {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Print styles */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  .dashboard-container::before {
+    display: none;
+  }
+
+  .grid-item {
+    page-break-inside: avoid;
+  }
+}
