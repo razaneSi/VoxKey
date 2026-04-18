@@ -1,9 +1,14 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { login as loginApi, logout as logoutApi, register as registerApi } from '../services/api';
 
 interface User {
   id: string;
   username: string;
   email: string;
+  createdAt?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
 }
 
 interface AuthContextType {
@@ -16,50 +21,78 @@ interface AuthContextType {
   error: string | null;
 }
 
-const DEMO_USER: User = {
-  id: 'demo-user',
-  username: 'Demo User',
-  email: 'demo@voxkey.local',
-};
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    const token = localStorage.getItem('auth_token');
+    if (savedUser && token) {
+      try {
+        setUser(JSON.parse(savedUser));
+        setIsAuthenticated(true);
+      } catch {
+        localStorage.removeItem('user');
+        localStorage.removeItem('auth_token');
+      }
+    }
+  }, []);
 
   const login = async (username: string, password: string) => {
     setLoading(true);
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setUser({
-      id: 'demo-user',
-      username: username || 'Demo User',
-      email: 'demo@voxkey.local',
-    });
-    setIsAuthenticated(true);
-    setLoading(false);
+    setError(null);
+    try {
+      const response = await loginApi(username, password);
+      localStorage.setItem('auth_token', response.token);
+      localStorage.setItem('user', JSON.stringify(response.user));
+      setUser(response.user);
+      setIsAuthenticated(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Login failed';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const logout = async () => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    setUser(null);
-    setIsAuthenticated(false);
-    setLoading(false);
+    setError(null);
+    try {
+      await logoutApi();
+    } catch {
+      // Logout should always clear local session.
+    } finally {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user');
+      setUser(null);
+      setIsAuthenticated(false);
+      setLoading(false);
+    }
   };
 
   const register = async (username: string, email: string, password: string) => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setUser({
-      id: 'demo-user',
-      username: username,
-      email: email,
-    });
-    setIsAuthenticated(true);
-    setLoading(false);
+    setError(null);
+    try {
+      const response = await registerApi(username, email, password);
+      localStorage.setItem('auth_token', response.token);
+      localStorage.setItem('user', JSON.stringify(response.user));
+      setUser(response.user);
+      setIsAuthenticated(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Registration failed';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const value = useMemo(
@@ -70,9 +103,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logout,
       register,
       loading,
-      error: null,
+      error,
     }),
-    [user, isAuthenticated, loading]
+    [user, isAuthenticated, loading, error]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

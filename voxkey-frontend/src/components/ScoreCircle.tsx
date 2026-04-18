@@ -3,9 +3,10 @@ import '../Components.css';
 
 interface ScoreCircleProps {
   score: number;
+  label?: string;
 }
 
-const ScoreCircle: React.FC<ScoreCircleProps> = ({ score }) => {
+const ScoreCircle: React.FC<ScoreCircleProps> = ({ score, label = 'Authentifié' }) => {
   const [displayScore, setDisplayScore] = useState(0);
 
   useEffect(() => {
@@ -95,7 +96,7 @@ const ScoreCircle: React.FC<ScoreCircleProps> = ({ score }) => {
         </div>
       </div>
 
-      <div className="score-label">Authentifié</div>
+      <div className="score-label">{label}</div>
 
       {/* Decorative elements */}
       <div className="score-glow"></div>

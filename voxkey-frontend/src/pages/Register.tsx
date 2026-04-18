@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useKeyboard, type KeyboardMetrics } from '../hooks/useKeyboard';
+import { useMicrophone } from '../hooks/useMicrophone';
+import { submitKeyboardData, submitVoiceSample } from '../services/api';
 import '../Auth.css';
 
 const Register: React.FC = () => {
@@ -11,8 +14,25 @@ const Register: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [typingSample, setTypingSample] = useState('');
+  const [capturedKeyboardMetrics, setCapturedKeyboardMetrics] = useState<KeyboardMetrics | null>(null);
+  const [registrationDone, setRegistrationDone] = useState(false);
 
   const { register } = useAuth();
+  const {
+    isTracking,
+    startTracking,
+    stopTracking,
+  } = useKeyboard();
+  const {
+    isRecording,
+    audioBlob,
+    metrics: audioMetrics,
+    error: audioError,
+    startRecording,
+    stopRecording,
+  } = useMicrophone();
+
   const validateForm = (): string | null => {
     if (!username || username.length < 3) {
       return 'Le nom d\'utilisateur doit contenir au moins 3 caractères';
@@ -29,7 +49,21 @@ const Register: React.FC = () => {
     if (!termsAccepted) {
       return 'Vous devez accepter les conditions d\'utilisation';
     }
+    if (!audioBlob) {
+      return 'Veuillez enregistrer un échantillon vocal.';
+    }
+    if (!capturedKeyboardMetrics || capturedKeyboardMetrics.totalKeystrokes < 3) {
+      return 'Veuillez saisir un court texte pour analyser votre pattern clavier.';
+    }
     return null;
+  };
+
+  const uploadBiometrics = async () => {
+    if (!audioBlob || !capturedKeyboardMetrics) {
+      throw new Error('Biometric samples are not ready');
+    }
+    await submitVoiceSample(audioBlob, audioMetrics || undefined);
+    await submitKeyboardData(capturedKeyboardMetrics);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,13 +77,25 @@ const Register: React.FC = () => {
     }
 
     setIsLoading(true);
+    let accountCreated = registrationDone;
 
     try {
-      await register(username, email, password);
+      if (!accountCreated) {
+        await register(username, email, password);
+        accountCreated = true;
+        setRegistrationDone(true);
+      }
+
+      await uploadBiometrics();
       window.history.pushState({}, '', '/dashboard');
       window.dispatchEvent(new Event('voxkey:navigate'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      const message = err instanceof Error ? err.message : 'Registration failed';
+      if (accountCreated) {
+        setError(`Compte créé, mais l'enregistrement biométrique a échoué: ${message}`);
+      } else {
+        setError(message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -184,6 +230,64 @@ const Register: React.FC = () => {
               </label>
             </div>
 
+            <div className="form-group">
+              <label>Échantillon vocal</label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {!isRecording ? (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => startRecording()}
+                    disabled={isLoading}
+                  >
+                    Démarrer l'écoute
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => stopRecording()}
+                    disabled={isLoading}
+                  >
+                    Arrêter l'écoute
+                  </button>
+                )}
+              </div>
+              <small className="input-hint">
+                {audioBlob ? 'Échantillon vocal prêt.' : 'Enregistrez 3 à 5 secondes de voix.'}
+              </small>
+              {audioError && <small className="input-hint" style={{ color: '#ff7b7b' }}>{audioError}</small>}
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="typingSample">Analyse du pattern clavier</label>
+              <textarea
+                id="typingSample"
+                value={typingSample}
+                onFocus={() => {
+                  if (!isTracking) {
+                    startTracking();
+                  }
+                }}
+                onBlur={() => {
+                  if (isTracking) {
+                    const captured = stopTracking();
+                    setCapturedKeyboardMetrics(captured);
+                  }
+                }}
+                onChange={(e) => setTypingSample(e.target.value)}
+                placeholder="Tapez une phrase naturelle ici pour capturer votre rythme..."
+                disabled={isLoading}
+                rows={4}
+                style={{ width: '100%', resize: 'vertical' }}
+              />
+              <small className="input-hint">
+                {capturedKeyboardMetrics
+                  ? `Pattern capturé: ${capturedKeyboardMetrics.totalKeystrokes} frappes`
+                  : 'Cliquez puis tapez; quittez le champ pour finaliser la capture.'}
+              </small>
+            </div>
+
             {error && <div className="form-error">{error}</div>}
 
             <button
@@ -195,7 +299,8 @@ const Register: React.FC = () => {
                 !email ||
                 !password ||
                 !confirmPassword ||
-                !termsAccepted
+                !termsAccepted ||
+                !audioBlob
               }
             >
               {isLoading ? (
@@ -215,6 +320,13 @@ const Register: React.FC = () => {
                 Se connecter
               </a>
             </p>
+            {registrationDone && (
+              <p>
+                Compte créé. Si besoin, relancez l'enregistrement biométrique puis cliquez sur
+                {' '}
+                <strong>Créer un compte</strong>.
+              </p>
+            )}
           </div>
         </div>
 

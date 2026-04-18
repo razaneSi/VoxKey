@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ErrorBoundary from './components/Errorboundary';
+
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Settings from './pages/Settings';
@@ -14,86 +15,95 @@ import './Navigation.css';
 
 const PUBLIC_ROUTES = new Set(['/login', '/register']);
 
-const normalizePath = (path: string) => {
-  if (!path || path === '/') return '/';
-  return path;
-};
+const getPath = () => window.location.pathname || '/';
 
 const AppContent: React.FC = () => {
-  const [pathname, setPathname] = useState<string>(() =>
-    normalizePath(window.location.pathname)
-  );
-
   const { isAuthenticated, loading } = useAuth();
 
-  useEffect(() => {
-    const handleNavigation = () => {
-      setPathname(normalizePath(window.location.pathname));
-    };
+  const [path, setPath] = useState<string>(getPath);
 
+  // Sync navigation events (back/forward + custom events)
+  const syncPath = useCallback(() => {
+    setPath(getPath());
+  }, []);
+
+  useEffect(() => {
     if ('scrollRestoration' in window.history) {
       window.history.scrollRestoration = 'manual';
     }
 
-    window.addEventListener('popstate', handleNavigation);
-    window.addEventListener('voxkey:navigate', handleNavigation);
+    window.addEventListener('popstate', syncPath);
+    window.addEventListener('voxkey:navigate', syncPath);
 
     return () => {
-      window.removeEventListener('popstate', handleNavigation);
-      window.removeEventListener('voxkey:navigate', handleNavigation);
+      window.removeEventListener('popstate', syncPath);
+      window.removeEventListener('voxkey:navigate', syncPath);
     };
-  }, []);
+  }, [syncPath]);
 
+  // Routing logic (single source of truth)
   useEffect(() => {
     if (loading) return;
 
-    const isPublic = PUBLIC_ROUTES.has(pathname);
-    let nextPath = pathname;
+    const isPublic = PUBLIC_ROUTES.has(path);
 
-    if (pathname === '/') {
+    let nextPath = path;
+
+    // Root redirect
+    if (path === '/') {
       nextPath = isAuthenticated ? '/dashboard' : '/login';
     }
 
+    // Protect private routes
     if (!isAuthenticated && !isPublic) {
       nextPath = '/login';
     }
 
+    // Prevent authenticated users from seeing login/register
     if (isAuthenticated && isPublic) {
       nextPath = '/dashboard';
     }
 
-    if (nextPath !== window.location.pathname) {
+    // Apply only if needed
+    if (nextPath !== path) {
       window.history.replaceState({}, '', nextPath);
+      setPath(nextPath);
     }
+  }, [isAuthenticated, loading, path]);
 
-    setPathname(nextPath);
-  }, [isAuthenticated, loading, pathname]);
-
+  // Scroll reset on route change
   useEffect(() => {
-    const resetScroll = () => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    const id = requestAnimationFrame(() => {
       window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
+    });
+
+    const timeout = window.setTimeout(() => {
+      window.scrollTo(0, 0);
+    }, 50);
+
+    return () => {
+      cancelAnimationFrame(id);
+      clearTimeout(timeout);
     };
+  }, [path]);
 
-    resetScroll();
-    requestAnimationFrame(resetScroll);
-
-    const timeoutId = window.setTimeout(resetScroll, 50);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [pathname]);
-
+  // Loading state
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
 
+  // Public routing
   if (!isAuthenticated) {
-    if (pathname === '/register') return <Register />;
+    if (path === '/register') return <Register />;
     return <Login />;
   }
 
-  if (pathname === '/settings') return <Settings />;
+  // Private routes
+  if (path === '/settings') return <Settings />;
 
   return <Dashboard />;
 };

@@ -8,11 +8,12 @@ interface DataPoint {
 }
 
 interface VoiceChartProps {
-  data?: DataPoint[];
+  voiceData?: DataPoint[];
+  keyboardData?: DataPoint[];
 }
 
-const VoiceChart: React.FC = () => {
-  return <RealtimeChart voiceData={[]} keyboardData={[]} />;
+const VoiceChart: React.FC<VoiceChartProps> = ({ voiceData = [], keyboardData = [] }) => {
+  return <RealtimeChart voiceData={voiceData} keyboardData={keyboardData} />;
 };
 
 export default VoiceChart;

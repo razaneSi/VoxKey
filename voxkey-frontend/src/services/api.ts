@@ -7,64 +7,6 @@ import type {
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-const DEMO_DASHBOARD_DATA: DashboardData = {
-  authScore: 94,
-  voiceMetrics: {
-    mfcc: 87,
-    energy: 76,
-    ff: 91,
-  },
-  keyboardPattern: {
-    weekData: [45, 52, 38, 61, 48, 55, 42],
-    weekLabels: ['L', 'M', 'M', 'J', 'V', 'S', 'D'],
-    stats: {
-      avgSpeed: 673,
-      avgAccuracy: 98,
-      touches: 1240,
-    },
-  },
-  activities: [
-    {
-      id: '1',
-      type: 'success',
-      message: 'Voice signature validated successfully',
-      timestamp: '14:22:08',
-    },
-    {
-      id: '2',
-      type: 'info',
-      message: 'Keyboard pattern updated with latest session',
-      timestamp: '14:20:15',
-    },
-    {
-      id: '3',
-      type: 'warning',
-      message: 'Minor rhythm deviation detected and accepted',
-      timestamp: '14:18:02',
-    },
-  ],
-  systemStatus: {
-    apiFlask: 'active',
-    moduleMl: 'active',
-    database: 'active',
-    dspEngine: 'active',
-  },
-  realtimeScores: [
-    { time: '14:10', score: 82 },
-    { time: '14:11', score: 84 },
-    { time: '14:12', score: 83 },
-    { time: '14:13', score: 87 },
-    { time: '14:14', score: 89 },
-    { time: '14:15', score: 91 },
-    { time: '14:16', score: 90 },
-    { time: '14:17', score: 93 },
-    { time: '14:18', score: 94 },
-    { time: '14:19', score: 92 },
-    { time: '14:20', score: 95 },
-    { time: '14:21', score: 94 },
-  ],
-};
-
 class ApiClient {
   private getAuthToken(): string {
     return localStorage.getItem('auth_token') || '';
@@ -137,14 +79,9 @@ class ApiClient {
 
   // Dashboard endpoints
   async fetchDashboardData(): Promise<DashboardData> {
-    try {
-      return await this.request<DashboardData>('/dashboard', {
-        method: 'GET',
-      });
-    } catch (error) {
-      console.warn('Using demo dashboard data because backend is unavailable.', error);
-      return DEMO_DASHBOARD_DATA;
-    }
+    return this.request<DashboardData>('/dashboard', {
+      method: 'GET',
+    });
   }
 
   async fetchAuthScore() {
@@ -184,9 +121,13 @@ class ApiClient {
   }
 
   // Biometric data endpoints
-  async submitVoiceSample(audioData: Blob) {
+  async submitVoiceSample(audioData: Blob, features?: object) {
     const formData = new FormData();
-    formData.append('audio', audioData);
+    const ext = audioData.type.includes('wav') ? 'wav' : 'webm';
+    formData.append('audio', audioData, `voice-sample.${ext}`);
+    if (features) {
+      formData.append('features_json', JSON.stringify(features));
+    }
 
     const token = this.getAuthToken();
     const response = await fetch(`${API_BASE_URL}/biometrics/voice/submit`, {
@@ -252,6 +193,19 @@ class ApiClient {
       method: 'GET',
     });
   }
+
+  // ML decision endpoints
+  async fetchMlDecision() {
+    return this.request('/ml/decision', {
+      method: 'GET',
+    });
+  }
+
+  async retrainMlProfile() {
+    return this.request('/ml/profile/retrain', {
+      method: 'POST',
+    });
+  }
 }
 
 const apiClient = new ApiClient();
@@ -264,7 +218,8 @@ export const fetchKeyboardPattern = () => apiClient.fetchKeyboardPattern();
 export const fetchRealtimeScores = () => apiClient.fetchRealtimeScores();
 export const fetchActivities = () => apiClient.fetchActivities();
 export const fetchSystemStatus = () => apiClient.fetchSystemStatus();
-export const submitVoiceSample = (audioData: Blob) => apiClient.submitVoiceSample(audioData);
+export const submitVoiceSample = (audioData: Blob, features?: object) =>
+  apiClient.submitVoiceSample(audioData, features);
 export const submitKeyboardData = (metrics: object) => apiClient.submitKeyboardData(metrics);
 export const login = (username: string, password: string) => apiClient.login(username, password);
 export const register = (username: string, email: string, password: string) =>
@@ -277,5 +232,7 @@ export const changePassword = (currentPassword: string, newPassword: string) =>
 export const fetchSettings = () => apiClient.fetchSettings();
 export const updateSettings = (settings: UserSettings) => apiClient.updateSettings(settings);
 export const fetchAnalytics = (timeRange?: string) => apiClient.fetchAnalytics(timeRange);
+export const fetchMlDecision = () => apiClient.fetchMlDecision();
+export const retrainMlProfile = () => apiClient.retrainMlProfile();
 
 export default apiClient;

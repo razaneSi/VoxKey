@@ -13,9 +13,21 @@ interface KeyboardData {
 
 interface KeyboardGraphProps {
   data?: KeyboardData | null;
+  typingValue?: string;
+  onTypingChange?: (value: string) => void;
+  onTypingFocus?: () => void;
+  onTypingBlur?: () => void | Promise<void>;
+  isAnalyzing?: boolean;
 }
 
-const KeyboardGraph: React.FC<KeyboardGraphProps> = ({ data }) => {
+const KeyboardGraph: React.FC<KeyboardGraphProps> = ({
+  data,
+  typingValue = '',
+  onTypingChange,
+  onTypingFocus,
+  onTypingBlur,
+  isAnalyzing = false,
+}) => {
   const graphData = useMemo(() => {
     if (!data) {
       return {
@@ -31,106 +43,42 @@ const KeyboardGraph: React.FC<KeyboardGraphProps> = ({ data }) => {
     return data;
   }, [data]);
 
-  const maxValue = Math.max(...graphData.weekData);
-  const chartHeight = 120;
-
   return (
     <div className="keyboard-graph-container">
       <div className="card-header">
         <h3>Pattern Clavier</h3>
         <div className="header-actions">
-          <span className="metric-label">Interval • Vitesse • Rythme</span>
-          <button className="btn-debarquer">Déboguer</button>
+          <span className="metric-label">Saisie • Vitesse • Rythme</span>
         </div>
       </div>
 
-      {/* Bar Chart */}
       <div className="keyboard-chart">
-        <svg
-          viewBox={`0 0 ${graphData.weekData.length * 40 + 20} ${chartHeight + 30}`}
-          xmlns="http://www.w3.org/2000/svg"
-          className="bars-svg"
-        >
-          <defs>
-            <linearGradient id="barGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#00ffc8" />
-              <stop offset="100%" stopColor="#00a88a" />
-            </linearGradient>
-            <filter id="barGlow">
-              <feGaussianBlur stdDeviation="1" result="coloredBlur" />
-              <feMerge>
-                <feMergeNode in="coloredBlur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-
-          {/* Grid lines */}
-          {[0, 1, 2, 3, 4].map((i) => (
-            <line
-              key={`grid-${i}`}
-              x1="10"
-              y1={chartHeight - (i * chartHeight) / 4}
-              x2={graphData.weekData.length * 40 + 10}
-              y2={chartHeight - (i * chartHeight) / 4}
-              stroke="rgba(0, 255, 200, 0.1)"
-              strokeWidth="0.5"
-              strokeDasharray="2,2"
-            />
-          ))}
-
-          {/* Bars */}
-          {graphData.weekData.map((value, i) => {
-            const barHeight = (value / maxValue) * chartHeight;
-            const x = i * 40 + 15;
-            const y = chartHeight - barHeight;
-
-            return (
-              <g key={`bar-${i}`}>
-                <rect
-                  x={x}
-                  y={y}
-                  width="24"
-                  height={barHeight}
-                  fill="url(#barGradient)"
-                  rx="2"
-                  className="bar-item"
-                  filter="url(#barGlow)"
-                  style={{
-                    opacity: 0.9,
-                  }}
-                />
-                {/* Bar hover effect */}
-                <rect
-                  x={x}
-                  y={y}
-                  width="24"
-                  height={barHeight}
-                  fill="none"
-                  stroke="rgba(0, 255, 200, 0.3)"
-                  strokeWidth="1"
-                  rx="2"
-                  className="bar-outline"
-                />
-              </g>
-            );
-          })}
-
-          {/* Labels */}
-          {graphData.weekLabels.map((label, i) => (
-            <text
-              key={`label-${i}`}
-              x={i * 40 + 27}
-              y={chartHeight + 18}
-              textAnchor="middle"
-              className="chart-text"
-              fill="rgba(0, 255, 200, 0.6)"
-              fontSize="11"
-            >
-              {label}
-            </text>
-          ))}
-        </svg>
+        <label htmlFor="keyboardPatternInput" className="metric-label">
+          Zone de frappe en temps réel
+        </label>
+        <textarea
+          id="keyboardPatternInput"
+          value={typingValue}
+          onChange={(e) => onTypingChange?.(e.target.value)}
+          onFocus={() => onTypingFocus?.()}
+          onBlur={() => onTypingBlur?.()}
+          placeholder="Tapez ici pour analyser votre pattern clavier..."
+          rows={5}
+          style={{
+            width: '100%',
+            resize: 'vertical',
+            marginTop: '0.5rem',
+            background: 'rgba(10, 16, 30, 0.6)',
+            color: '#d9fdf6',
+            border: '1px solid rgba(0,255,200,0.25)',
+            borderRadius: '8px',
+            padding: '0.7rem',
+            height: '80px',
+          }}
+        />
+        <div className="metric-label" style={{ marginTop: '0.35rem' }}>
+          {isAnalyzing ? 'Analyse clavier...' : 'La saisie est envoyée automatiquement pour analyse.'}
+        </div>
       </div>
 
       {/* Stats Row */}

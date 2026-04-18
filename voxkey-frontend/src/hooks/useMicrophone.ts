@@ -1,102 +1,173 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback } from "react";
 
 export interface AudioMetrics {
   duration: number;
-  volume: number;
-  frequency: number;
+  energy: number;
+  dominant_frequency: number;
+  fft_mean: number;
+  fourier_series: number[];
   mfcc: number[];
+  sample_rate: number;
 }
 
-export const useMicrophone= () => {
+interface StartRecordingOptions {
+  onChunk?: (audioBlob: Blob, metrics: AudioMetrics) => void;
+  timesliceMs?: number;
+}
+
+export const useMicrophone = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [metrics, setMetrics] = useState<AudioMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
-  const audioChunks = useRef<Blob[]>([]);
-  const audioContext = useRef<AudioContext | null>(null);
-  const analyser = useRef<AnalyserNode | null>(null);
+  const chunks = useRef<Blob[]>([]);
   const stream = useRef<MediaStream | null>(null);
 
-  const startRecording = useCallback(async () => {
-    try {
-      setError(null);
+  const audioContext = useRef<AudioContext | null>(null);
+  const analyser = useRef<AnalyserNode | null>(null);
 
-      // Get user media
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: false,
-        },
-      });
+  const startTime = useRef<number>(0);
+  const raf = useRef<number | null>(null);
 
-      stream.current = mediaStream;
-      audioChunks.current = [];
+  const computeMetrics = useCallback((): AudioMetrics | null => {
+    if (!analyser.current || !audioContext.current) return null;
 
-      // Create audio context and analyser
-      const context = new (window.AudioContext || (window as any).webkitAudioContext)();
-      audioContext.current = context;
+    const bufferLength = analyser.current.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    analyser.current.getByteFrequencyData(dataArray);
 
-      const analyzerNode = context.createAnalyser();
-      analyzerNode.fftSize = 2048;
-      analyser.current = analyzerNode;
+    const normalized = Array.from(dataArray).map((v) => v / 255);
 
-      const source = context.createMediaStreamSource(mediaStream);
-      source.connect(analyzerNode);
+    // Energy (RMS) → stable biometric feature
+    const energy =
+      Math.sqrt(normalized.reduce((a, v) => a + v * v, 0) / normalized.length);
 
-      // Create MediaRecorder
-      const recorder = new MediaRecorder(mediaStream, {
-        mimeType: 'audio/webm;codecs=opus',
-      });
+    // FFT mean
+    const fft_mean =
+      normalized.reduce((a, b) => a + b, 0) / normalized.length;
 
-      recorder.ondataavailable = (event) => {
-        audioChunks.current.push(event.data);
-      };
+    // Dominant frequency
+    const maxIndex = normalized.indexOf(Math.max(...normalized));
+    const binHz = audioContext.current.sampleRate / (2 * bufferLength);
+    const dominant_frequency = maxIndex * binHz;
 
-      mediaRecorder.current = recorder;
-      recorder.start();
-      setIsRecording(true);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to start recording';
-      setError(message);
-      console.error('Recording error:', err);
-    }
+    // Stable pseudo-MFCC (band energy summary, NOT fake raw bins)
+    const mfcc = Array.from({ length: 13 }, (_, i) => {
+      const start = Math.floor((i * normalized.length) / 13);
+      const end = Math.floor(((i + 1) * normalized.length) / 13);
+      const slice = normalized.slice(start, end);
+      return (
+        slice.reduce((a, b) => a + b, 0) / (slice.length || 1)
+      ) * 100;
+    });
+
+    // Fourier envelope (reduced noise)
+    const fourier_series = normalized
+      .slice(0, 128)
+      .map((v) => Number(v.toFixed(6)));
+
+    const duration = (Date.now() - startTime.current) / 1000;
+
+    return {
+      duration,
+      energy: Number(energy.toFixed(6)),
+      dominant_frequency: Number(dominant_frequency.toFixed(2)),
+      fft_mean: Number(fft_mean.toFixed(6)),
+      fourier_series,
+      mfcc,
+      sample_rate: audioContext.current.sampleRate,
+    };
   }, []);
 
-  const stopRecording = useCallback(async (): Promise<Blob | null> => {
+  const loop = useCallback(() => {
+    const m = computeMetrics();
+    if (m) setMetrics(m);
+    raf.current = requestAnimationFrame(loop);
+  }, [computeMetrics]);
+
+  const startRecording = useCallback(
+    async (options?: StartRecordingOptions) => {
+      try {
+        setError(null);
+
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+
+        stream.current = mediaStream;
+        chunks.current = [];
+        startTime.current = Date.now();
+
+        const context = new AudioContext();
+        audioContext.current = context;
+
+        const source = context.createMediaStreamSource(mediaStream);
+
+        const node = context.createAnalyser();
+        node.fftSize = 2048;
+        node.smoothingTimeConstant = 0.3;
+
+        analyser.current = node;
+        source.connect(node);
+
+        const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : "audio/webm";
+
+        const recorder = new MediaRecorder(mediaStream, { mimeType: mime });
+
+        recorder.ondataavailable = async (e) => {
+          if (!e.data.size) return;
+
+          chunks.current.push(e.data);
+
+          const m = computeMetrics();
+          if (m && options?.onChunk) {
+            // NO await → avoids blocking recorder
+            options.onChunk(e.data, m);
+          }
+        };
+
+        mediaRecorder.current = recorder;
+        recorder.start(options?.timesliceMs ?? 1000);
+
+        setIsRecording(true);
+        raf.current = requestAnimationFrame(loop);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Microphone error"
+        );
+      }
+    },
+    [computeMetrics, loop]
+  );
+
+  const stopRecording = useCallback((): Promise<Blob | null> => {
     return new Promise((resolve) => {
       if (!mediaRecorder.current || !stream.current) {
-        setError('No recording in progress');
         resolve(null);
         return;
       }
 
       mediaRecorder.current.onstop = () => {
-        // Process audio
-        const blob = new Blob(audioChunks.current, { type: 'audio/webm' });
+        const blob = new Blob(chunks.current, {
+          type: mediaRecorder.current?.mimeType || "audio/webm",
+        });
+
         setAudioBlob(blob);
 
-        // Extract metrics
-        if (analyser.current && audioContext.current) {
-          const dataArray = new Uint8Array(analyser.current.frequencyBinCount);
-          analyser.current.getByteFrequencyData(dataArray);
+        const m = computeMetrics();
+        if (m) setMetrics(m);
 
-          const volume =
-            dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
-          const frequency = dataArray.findIndex((v) => v > 100) * 23.4375; // Rough frequency calculation
+        stream.current?.getTracks().forEach((t) => t.stop());
 
-          setMetrics({
-            duration: audioChunks.current.reduce((sum, chunk) => sum + chunk.size, 0) / 32000,
-            volume: Math.round(volume * 100),
-            frequency: Math.round(frequency),
-            mfcc: Array.from({ length: 13 }, () => Math.random() * 100), // Placeholder
-          });
-        }
-
-        // Stop all tracks
-        stream.current?.getTracks().forEach((track) => track.stop());
+        if (raf.current) cancelAnimationFrame(raf.current);
 
         setIsRecording(false);
         resolve(blob);
@@ -104,10 +175,10 @@ export const useMicrophone= () => {
 
       mediaRecorder.current.stop();
     });
-  }, []);
+  }, [computeMetrics]);
 
   const clearRecording = useCallback(() => {
-    audioChunks.current = [];
+    chunks.current = [];
     setAudioBlob(null);
     setMetrics(null);
     setError(null);
