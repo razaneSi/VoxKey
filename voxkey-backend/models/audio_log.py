@@ -13,10 +13,10 @@ class VoiceLog(Base):
 
     __tablename__ = "voice_logs"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
-    mfcc: Mapped[list | dict | None] = mapped_column(JSON)
-    energy: Mapped[float | None] = mapped_column(Float)
-    pitch: Mapped[float | None] = mapped_column(Float)
-    score: Mapped[float | None] = mapped_column(Float)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime)
+    resemblyzer_score: Mapped[float | None] = mapped_column(Float)
+    speechbrain_score: Mapped[float | None] = mapped_column(Float)
+    fft_score: Mapped[float | None] = mapped_column(Float)
+    final_score: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.utcnow)

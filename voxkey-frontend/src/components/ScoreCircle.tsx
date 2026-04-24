@@ -6,7 +6,7 @@ interface ScoreCircleProps {
   label?: string;
 }
 
-const ScoreCircle: React.FC<ScoreCircleProps> = ({ score, label = 'Authentifié' }) => {
+const ScoreCircle: React.FC<ScoreCircleProps> = ({ score, label = 'AuthentifiÃ©' }) => {
   const [displayScore, setDisplayScore] = useState(0);
 
   useEffect(() => {

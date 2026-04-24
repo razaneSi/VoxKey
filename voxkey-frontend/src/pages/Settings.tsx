@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getUserProfile, updateUserProfile, changePassword, fetchSettings, updateSettings } from '../services/api';
+import { updateUserProfile, changePassword, fetchSettings, updateSettings } from '../services/api';
 import '../Settings.css';
 
 interface UserProfile {
@@ -23,8 +23,28 @@ interface UserSettings {
   sessionTimeout: number;
 }
 
+const DEMO_PROFILE: UserProfile = {
+  id: 'demo-user',
+  username: 'demo_user',
+  email: 'demo@example.com',
+  firstName: 'Demo',
+  lastName: 'User',
+  phone: '+1-234-567-8900',
+  createdAt: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString(),
+};
+
+const DEMO_SETTINGS: UserSettings = {
+  enableEmailNotifications: true,
+  enablePushNotifications: true,
+  enableTwoFactor: false,
+  voiceAuthEnabled: true,
+  keyboardAuthEnabled: true,
+  authThreshold: 85,
+  sessionTimeout: 180,
+};
+
 const Settings: React.FC = () => {
-  useAuth();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences'>('profile');
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -42,45 +62,28 @@ const Settings: React.FC = () => {
     confirmPassword: '',
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const DEMO_PROFILE: UserProfile = {
-    id: 'demo-user',
-    username: 'demo_user',
-    email: 'demo@example.com',
-    firstName: 'Demo',
-    lastName: 'User',
-    phone: '+1-234-567-8900',
-    createdAt: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year ago
-  };
-
-  const DEMO_SETTINGS: UserSettings = {
-    enableEmailNotifications: true,
-    enablePushNotifications: true,
-    enableTwoFactor: false,
-    voiceAuthEnabled: true,
-    keyboardAuthEnabled: true,
-    authThreshold: 85,
-    sessionTimeout: 180, // 3 minutes
-  };
-
   const [isDemoProfile, setIsDemoProfile] = useState(false);
   const [isDemoSettings, setIsDemoSettings] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
 
-      // Load profile with fallback
-      try {
-        const profileData = await getUserProfile();
-        setProfile(profileData);
-        setProfileForm(profileData);
+      // Always sync profile with the authenticated session user.
+      if (user) {
+        const sessionProfile: UserProfile = {
+          id: user.id,
+          username: user.username,
+          email: user.email || '',
+          firstName: user.firstName,
+          lastName: user.lastName,
+          phone: user.phone,
+          createdAt: user.createdAt || new Date().toISOString(),
+        };
+        setProfile(sessionProfile);
+        setProfileForm(sessionProfile);
         setIsDemoProfile(false);
-      } catch (profileErr) {
-        console.warn('Profile API failed, using demo:', profileErr);
+      } else {
         setProfile(DEMO_PROFILE);
         setProfileForm(DEMO_PROFILE);
         setIsDemoProfile(true);
@@ -101,13 +104,19 @@ const Settings: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   const handleSaveProfile = async () => {
     try {
       setError(null);
       await updateUserProfile(profileForm);
-      setProfile(profileForm as UserProfile);
+      const merged = { ...(profile || {}), ...profileForm } as UserProfile;
+      setProfile(merged);
+      localStorage.setItem('user', JSON.stringify(merged));
       setEditingProfile(false);
       setSuccess('Profil mis à jour avec succès');
       setTimeout(() => setSuccess(null), 3000);

@@ -200,4 +200,3 @@ export interface Session {
   createdAt: Date;
   expiresAt: Date;
 }
-

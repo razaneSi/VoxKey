@@ -7,6 +7,27 @@ const Navigation: React.FC = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
+  const scrollToSection = (selector: string) => {
+    const target = document.querySelector(selector);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const goToDashboardSection = (selector: string) => {
+    const onDashboard = window.location.pathname === '/dashboard';
+    if (!onDashboard) {
+      window.history.pushState({}, '', '/dashboard');
+      window.dispatchEvent(new Event('voxkey:navigate'));
+      window.setTimeout(() => scrollToSection(selector), 180);
+    } else {
+      scrollToSection(selector);
+    }
+    setMenuOpen(false);
+  };
+
   const handleLogout = async () => {
     try {
       await logout();
@@ -23,35 +44,20 @@ const Navigation: React.FC = () => {
         {/* Logo and Brand */}
         <div className="nav-brand">
           <div className="brand-icon"><i className="bx bx-wifi" /></div>
-          <button onClick={() => {
-            window.history.pushState({}, '', '/dashboard');
-            window.dispatchEvent(new Event('voxkey:navigate'));
-          }} className="brand-text">
+          <button onClick={() => goToDashboardSection('.dashboard-content')} className="brand-text">
             VoxKey
           </button>
         </div>
 
         {/* Main Navigation */}
         <div className={`nav-menu ${menuOpen ? 'open' : ''}`}>
-          <button onClick={() => {
-            window.history.pushState({}, '', '/dashboard');
-            window.dispatchEvent(new Event('voxkey:navigate'));
-          }} className="nav-link">
-            <span className="link-icon">ADD ICON</span>
-            Tableau de bord
-          </button>
-          <button onClick={() => {
-            window.history.pushState({}, '', '/analytics');
-            window.dispatchEvent(new Event('voxkey:navigate'));
-          }} className="nav-link">
-            <span className="link-icon">ADD ICON</span>
+         
+          <button onClick={() => goToDashboardSection('.chart-card')} className="nav-link">
+            <span className="link-icon"></span>
             Analytique
           </button>
-          <button onClick={() => {
-            window.history.pushState({}, '', '/sessions');
-            window.dispatchEvent(new Event('voxkey:navigate'));
-          }} className="nav-link">
-            <span className="link-icon">ADD ICON</span>
+          <button onClick={() => goToDashboardSection('.activity-card, .status-card')} className="nav-link">
+            <span className="link-icon"></span>
             Sessions
           </button>
         </div>

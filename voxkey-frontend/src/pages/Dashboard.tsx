@@ -11,7 +11,6 @@ import { useMicrophone, type AudioMetrics } from '../hooks/useMicrophone';
 import {
   fetchDashboardData,
   fetchMlDecision,
-  retrainMlProfile,
   submitKeyboardData,
   submitVoiceSample,
 } from '../services/api';
@@ -51,7 +50,7 @@ interface DashboardData {
 type DecisionStatus = 'trusted' | 'suspicious' | 'blocked' | 'enrolling' | 'warming_up' | 'unknown';
 
 const Dashboard: React.FC = () => {
-  const { isAuthenticated, logout, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,22 +105,6 @@ const Dashboard: React.FC = () => {
     }
   }, [user?.id]);
 
-  // SIGN-OUT LOCATION 1: This function is called when an anomaly is detected
-  // COMPLETELY DISABLED - Will never trigger sign-out
-  const triggerLogoutOnAnomaly = useCallback(async (reason: string) => {
-    // DISABLED: Commented out to prevent any sign-out
-    // if (logoutTriggeredRef.current) return;
-    // logoutTriggeredRef.current = true;
-    // setAnalysisMessage(`Anomalie détectée (${reason}). Déconnexion de sécurité...`);
-    // await logout();  // <-- SIGN-OUT would happen here
-    // window.history.pushState({}, '', '/login');
-    // window.dispatchEvent(new Event('voxkey:navigate'));
-    
-    // Just log the anomaly without signing out
-    console.log(`Anomaly detected but sign-out disabled: ${reason}`);
-    setAnalysisMessage(`Anomalie détectée (${reason}) - SIGN-OUT DISABLED`);
-  }, [logout]);
-
   const checkMlDecision = useCallback(async () => {
     if (!isAuthenticatedRef.current || logoutTriggeredRef.current) return;
     try {
@@ -154,7 +137,7 @@ const Dashboard: React.FC = () => {
         return;
       }
 
-      setAnalysisMessage(`Décision ML: ${decision}${confidence !== null ? ` (${confidence.toFixed(1)}%)` : ''}`);
+      setAnalysisMessage(`DSP Score: ${decision}${confidence !== null ? ` (${confidence.toFixed(1)}%)` : ''}`);
 
       // SIGN-OUT LOCATION 2: COMPLETELY DISABLED - Will NOT sign out
       // This would trigger sign-out but is now commented out
@@ -164,7 +147,7 @@ const Dashboard: React.FC = () => {
     } catch {
       // keep dashboard running
     }
-  }, [appendScore, triggerLogoutOnAnomaly]);
+  }, [appendScore]);
 
   const submitKeyboardSample = useCallback(async (metrics: KeyboardMetrics) => {
     if (metrics.totalKeystrokes < 10) return;
@@ -178,7 +161,7 @@ const Dashboard: React.FC = () => {
         totalKeystrokes: metrics.totalKeystrokes,
       });
       appendScore(setKeyboardSeries, metrics.averageSpeed / 10);
-      await retrainMlProfile().catch(() => undefined);
+      // retrain removed (no ML)
       await checkMlDecision();  // This will NOT trigger sign-out (disabled above)
     } finally {
       setIsSubmittingKeyboard(false);
@@ -194,8 +177,9 @@ const Dashboard: React.FC = () => {
     const speakingThreshold = 0.0045;
     if (metrics.energy < speakingThreshold) return;
 
+    // Remove the cooldown check for manual mode, or keep it to prevent button spam
     const now = Date.now();
-    if (now - voiceCooldownRef.current < 3500) return;
+    if (now - voiceCooldownRef.current < 2000) return;
     voiceCooldownRef.current = now;
 
     setIsSubmittingVoice(true);
@@ -218,16 +202,10 @@ const Dashboard: React.FC = () => {
       if (response?.voiceIdentity?.decision) {
         const decision = response.voiceIdentity.decision as DecisionStatus;
         setMlDecision(decision);
-        // SIGN-OUT LOCATION 3: Already commented out - Voice-based sign-out disabled
-        // if (decision === 'suspicious' || decision === 'blocked') {
-        //   await triggerLogoutOnAnomaly(`voice:${decision}`);
-        //   return;
-        // }
       }
 
-
-      await retrainMlProfile().catch(() => undefined);
-      await checkMlDecision();  // This will NOT trigger sign-out (disabled above)
+      // retrain removed (no ML)
+      await checkMlDecision();
     } catch (err) {
       if (err instanceof Error && err.message.includes('401')) return;
       if (!isAuthenticatedRef.current || logoutTriggeredRef.current) return;
@@ -235,7 +213,42 @@ const Dashboard: React.FC = () => {
     } finally {
       setIsSubmittingVoice(false);
     }
-  }, [appendScore, checkMlDecision, triggerLogoutOnAnomaly]);
+  }, [appendScore, checkMlDecision]);
+
+  const toggleVoiceCapture = async () => {
+    if (isRecording) {
+      await stopRecording();
+      micActiveRef.current = false;
+      setAnalysisMessage('Surveillance vocale arrêtée.');
+    } else {
+      try {
+        micActiveRef.current = true;
+        await startRecording({
+          onChunk: async (blob, metrics) => {
+            await handleVoiceChunkRef.current?.(blob, metrics);
+          },
+          timesliceMs: 2500, // Slightly longer chunks for better manual mode
+        });
+        setAnalysisMessage('Surveillance vocale active.');
+      } catch (err) {
+        micActiveRef.current = false;
+        setError(err instanceof Error ? err.message : 'Unable to start microphone');
+      }
+    }
+  };
+
+  const toggleKeyboardCapture = async () => {
+    if (isTracking) {
+      const snapshot = stopTracking();
+      if (snapshot.totalKeystrokes > 0) {
+        await submitKeyboardSample(snapshot);
+      }
+      setAnalysisMessage('Surveillance clavier arrêtée.');
+    } else {
+      startTracking();
+      setAnalysisMessage('Surveillance clavier active. Tapez pour être identifié.');
+    }
+  };
 
   useEffect(() => {
     handleVoiceChunkRef.current = handleVoiceChunk;
@@ -283,51 +296,22 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    if (!isTracking) startTracking();
-  }, [isAuthenticated, isTracking, startTracking]);
+    // Automatic tracking removed - now manual
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
-
-    const keyboardIntervalId = window.setInterval(async () => {
-      if (!isAuthenticatedRef.current || logoutTriggeredRef.current) return;
-      if (!isTracking) { startTracking(); return; }
-      const snapshot = stopTracking();
-      startTracking();
-      await submitKeyboardSample(snapshot);  // This will NOT trigger sign-out (disabled)
-    }, 10000);
-
-    return () => window.clearInterval(keyboardIntervalId);
-  }, [isAuthenticated, isTracking, startTracking, stopTracking, submitKeyboardSample]);
+    // Periodic keyboard submission removed - now manual
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
-      micActiveRef.current = false;
-      if (isRecording) void stopRecording();
-      return;
+       micActiveRef.current = false;
+       if (isRecording) void stopRecording();
+       return;
     }
-
-    if (micActiveRef.current) return;
-    micActiveRef.current = true;
-
-    const startAutoVoice = async () => {
-      try {
-        await startRecording({
-          onChunk: async (blob, metrics) => {
-            await handleVoiceChunkRef.current?.(blob, metrics);  // This will NOT trigger sign-out
-          },
-          timesliceMs: 1200,
-        });
-        setAnalysisMessage('Microphone actif: détection automatique de la parole.');
-      } catch (err) {
-        micActiveRef.current = false;
-        setError(err instanceof Error ? err.message : 'Unable to start microphone monitoring');
-      }
-    };
-
-    void startAutoVoice();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, user?.id, startRecording, stopRecording]);
+    // Automatic voice capture removed - now manual
+  }, [isAuthenticated, isRecording, stopRecording]);
 
   if (!isAuthenticated) {
     return (
@@ -372,11 +356,11 @@ const Dashboard: React.FC = () => {
 
   const effectiveScore = mlConfidence ?? dashboardData?.authScore ?? 0;
   const scoreLabel =
-    mlDecision === 'trusted' ? 'Même utilisateur' :
-    mlDecision === 'suspicious' ? 'Suspect' :
-    mlDecision === 'blocked' ? 'Utilisateur différent' :
-    mlDecision === 'enrolling' ? 'Enrôlement vocal' : 'Analyse en cours';
-
+  mlDecision === 'trusted' ? 'Identité Valide' :
+  mlDecision === 'suspicious' ? 'Accès Suspect' :
+  mlDecision === 'blocked' ? 'Utilisateur différent' :
+  mlDecision === 'enrolling' ? 'Enrôlement vocal' :
+  'Analyse en cours';
   const waveValues = audioMetrics?.fourier_series?.slice(0, 70) || Array.from({ length: 70 }, () => 0.05);
 
   return (
@@ -393,25 +377,26 @@ const Dashboard: React.FC = () => {
           <div className="voice-card">
             <div className="card-header">
               <h3>Analyse Vocale</h3>
-              <span className="metric-label">Micro auto • MFCC • FFT • Identité</span>
+              <button 
+                className={`btn-auth-toggle ${isRecording ? 'active' : ''}`}
+                onClick={toggleVoiceCapture}
+              >
+                {isRecording ? 'Arrêter' : 'Démarrer'}
+              </button>
             </div>
             <div className="metric-label" style={{ marginBottom: '0.8rem' }}>
-              {isRecording ? 'Écoute active (détection automatique de la parole).' : 'Microphone inactif.'}
+              {isRecording ? 'Écoute active (parlez pour être identifié).' : 'Microphone en pause.'}
               {' '}
-              {isSubmittingVoice ? 'Analyse vocale...' : analysisMessage}
+              {isSubmittingVoice ? 'Analyse en cours...' : analysisMessage}
             </div>
             <div className="voice-metrics">
               <div className="metric-item">
-                <span className="metric-name">ML Score</span>
-                <span className="metric-value">{effectiveScore.toFixed(2)}</span>
+                <span className="metric-name">Score DSP</span>
+                <span className="metric-value">{effectiveScore.toFixed(0)}%</span>
               </div>
               <div className="metric-item">
                 <span className="metric-name">Énergie</span>
                 <span className="metric-value">{(audioMetrics?.energy ?? 0).toFixed(4)}</span>
-              </div>
-              <div className="metric-item">
-                <span className="metric-name">Freq. Dominante</span>
-                <span className="metric-value">{(audioMetrics?.dominant_frequency ?? 0).toFixed(1)} Hz</span>
               </div>
             </div>
             <div className="wave-visualizer">
@@ -425,16 +410,22 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
           <div className="keyboard-card">
+            <div className="card-header">
+              <h3>Analyse Clavier</h3>
+              <button 
+                className={`btn-auth-toggle ${isTracking ? 'active' : ''}`}
+                onClick={toggleKeyboardCapture}
+              >
+                {isTracking ? 'Arrêter' : 'Démarrer'}
+              </button>
+            </div>
             <KeyboardGraph
               data={dashboardData?.keyboardPattern ?? null}
               typingValue={typingSample}
               onTypingChange={setTypingSample}
-              onTypingFocus={() => { if (!isTracking) startTracking(); }}
+              onTypingFocus={() => { if (!isTracking) toggleKeyboardCapture(); }}
               onTypingBlur={async () => {
-                if (!isTracking) return;
-                const sample = stopTracking();
-                startTracking();
-                await submitKeyboardSample(sample);  // This will NOT trigger sign-out
+                // Keep tracking until they press STOP button
               }}
               isAnalyzing={isSubmittingKeyboard}
             />

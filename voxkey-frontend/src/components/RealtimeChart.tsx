@@ -79,7 +79,7 @@ const RealtimeChart: React.FC<RealtimeChartProps> = ({
   return (
     <div className="voice-chart-container">
       <div className="chart-header">
-        <h3>Score Temps Réel</h3>
+        <h3>Score Temps RÃ©el</h3>
 
         <div className="chart-toggles">
           <button

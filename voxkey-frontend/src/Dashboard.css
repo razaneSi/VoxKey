@@ -374,6 +374,41 @@ body {
   box-shadow: 0 0 8px rgba(0, 255, 200, 0.3);
 }
 
+.btn-auth-toggle {
+  padding: 6px 14px;
+  background: rgba(0, 255, 200, 0.05);
+  border: 1px solid var(--border-color);
+  color: #a0aec0;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--font-family-display);
+}
+
+.btn-auth-toggle:hover {
+  background: rgba(0, 255, 200, 0.1);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.btn-auth-toggle.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--bg-darker);
+  box-shadow: var(--shadow-glow);
+  animation: pulse-active 2s infinite;
+}
+
+@keyframes pulse-active {
+  0% { box-shadow: 0 0 0 0 rgba(0, 255, 200, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(0, 255, 200, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 255, 200, 0); }
+}
+
 /* Loading and error states */
 .dashboard-skeleton {
   position: relative;
