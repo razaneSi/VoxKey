@@ -262,13 +262,7 @@ Do not deploy this version to production without hardening.
 - Some route/service naming is legacy (references to ML modules even when logic is DSP + heuristics)
 - Existing repo includes large local data artifacts (`data/uploads`, temp audio, sqlite files)
 
-## Next Improvements
-1. Add proper password hashing (`bcrypt`) and JWT auth
-2. Enforce per-user auth context on all protected routes
-3. Add `requirements.txt` or `pyproject.toml` for deterministic backend installs
-4. Add backend tests (unit + API integration)
-5. Add CI with linting/type checks
-6. Add cleanup policy for stored audio artifacts
+
 
 
 
